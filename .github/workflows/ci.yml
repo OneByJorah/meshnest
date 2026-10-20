@@ -1,0 +1,22 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -x install.sh bin/j1-mesh lib/*.sh packaging/*.sh
+      - name: unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: build .deb
+        run: |
+          ./packaging/build-deb.sh 0.0.0-ci
+          dpkg-deb --info dist/*.deb

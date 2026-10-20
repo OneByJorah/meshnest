@@ -1,0 +1,30 @@
+[Unit]
+Description=J1 Mesh Stack - mesh latency dashboard
+Documentation=https://github.com/OneByJorah/j1-mesh-stack
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/j1-mesh/dashboard.env
+WorkingDirectory=/var/lib/j1-mesh
+ExecStart=/usr/bin/python3 @JMS_ROOT@/dashboard/server.py
+Restart=on-failure
+RestartSec=5
+
+# Runs as root only so zerotier-cli can read its auth token and ping can use raw sockets.
+# Everything else is locked down.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/j1-mesh
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

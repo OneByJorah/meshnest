@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+# j1-mesh - install and operate a mesh VPN stack that needs zero inbound ports.
+set -euo pipefail
+
+JMS_ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+# shellcheck source=lib/common.sh
+. "$JMS_ROOT/lib/common.sh"
+for _f in "$JMS_ROOT"/lib/provider-*.sh; do
+  # shellcheck source=/dev/null
+  . "$_f"
+done
+unset _f
+
+usage() {
+  cat <<EOF
+j1-mesh $JMS_VERSION - mesh VPN stack, zero inbound ports
+
+Usage: j1-mesh <command> [options] [provider...]
+
+Commands:
+  install [--no-dashboard] [--no-up] [provider...]   install providers + dashboard
+  up [provider...]                                   enroll / connect (reads $JMS_ETC/mesh.env)
+  down [provider...]                                 disconnect
+  status                                             state of every provider and the dashboard
+  doctor                                             health + inbound-exposure audit
+  dashboard                                          run the dashboard in the foreground
+  uninstall [--purge] [provider...]                  remove providers (all + dashboard if none named)
+  version
+
+Providers: $ALL_PROVIDERS   (default: all)
+EOF
+}
+
+require_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    command -v sudo >/dev/null 2>&1 || die "This command needs root and sudo was not found."
+    exec sudo -E "$0" "$@"
+  fi
+}
+
+ensure_config() {
+  install -d -m 0750 "$JMS_ETC"
+  install -d -m 0755 "$JMS_STATE"
+  if [ ! -f "$JMS_ETC/mesh.env" ]; then
+    install -m 0600 "$JMS_ROOT/config/mesh.env.example" "$JMS_ETC/mesh.env"
+    ok "Created $JMS_ETC/mesh.env (0600) - add your enrollment keys there"
+  fi
+  if [ ! -f "$JMS_ETC/dashboard.env" ]; then
+    install -m 0644 "$JMS_ROOT/config/dashboard.env.example" "$JMS_ETC/dashboard.env"
+    ok "Created $JMS_ETC/dashboard.env"
+  fi
+}
+
+dashboard_install() {
+  [ -f "$JMS_ROOT/dashboard/server.py" ] || die "dashboard/server.py missing from $JMS_ROOT"
+  if ! command -v systemctl >/dev/null 2>&1; then
+    warn "systemd not found - start the dashboard manually with: j1-mesh dashboard"
+    return 0
+  fi
+  sed "s|@JMS_ROOT@|$JMS_ROOT|g" "$JMS_ROOT/systemd/j1-mesh-dashboard.service" \
+    > /etc/systemd/system/j1-mesh-dashboard.service
+  systemctl daemon-reload
+  systemctl enable --now j1-mesh-dashboard.service >/dev/null
+  ok "Dashboard service enabled (loopback only by default)"
+}
+
+dashboard_uninstall() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable --now j1-mesh-dashboard.service >/dev/null 2>&1 || true
+  fi
+  rm -f /etc/systemd/system/j1-mesh-dashboard.service
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+  fi
+  ok "Dashboard service removed"
+}
+
+print_summary() {
+  local port=8787
+  if [ -r "$JMS_ETC/dashboard.env" ]; then
+    port=$(sed -n 's/^J1_MESH_PORT=\([0-9]*\).*/\1/p' "$JMS_ETC/dashboard.env" | tail -n1)
+    port="${port:-8787}"
+  fi
+  echo
+  log "Next steps"
+  cat <<EOF
+  1. Add enrollment keys to $JMS_ETC/mesh.env, then run:   sudo j1-mesh up
+  2. ZeroTier: authorize this node in ZeroTier Central.
+  3. Dashboard (loopback only):  http://127.0.0.1:$port
+     From another tailnet device:  sudo tailscale serve --bg $port
+     Or over SSH:                  ssh -L $port:127.0.0.1:$port <this-host>
+  4. Confirm nothing is exposed:  sudo j1-mesh doctor
+EOF
+}
+
+cmd_install() {
+  local with_dashboard=1 do_up=1 args=() providers p
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-dashboard) with_dashboard=0 ;;
+      --no-up) do_up=0 ;;
+      -h|--help) usage; exit 0 ;;
+      -*) die "Unknown option: $1" ;;
+      *) args+=("$1") ;;
+    esac
+    shift
+  done
+  providers=$(resolve_providers "${args[@]+"${args[@]}"}")
+
+  os_detect
+  ensure_config
+  log "Installing prerequisites"
+  apt_refresh
+  apt_install curl gpg ca-certificates iproute2 iputils-ping python3
+  load_env
+
+  for p in $providers; do
+    log "Provider: $p"
+    "${p}_install"
+  done
+  if [ "$with_dashboard" = 1 ]; then
+    dashboard_install
+  fi
+  if [ "$do_up" = 1 ]; then
+    for p in $providers; do
+      log "Connecting: $p"
+      "${p}_up" || warn "$p: enrollment did not complete (see message above)"
+    done
+  fi
+  print_summary
+}
+
+cmd_up() {
+  local providers p
+  providers=$(resolve_providers "$@")
+  load_env
+  for p in $providers; do
+    if "${p}_installed"; then
+      log "Connecting: $p"
+      "${p}_up" || warn "$p: did not come up"
+    else
+      warn "$p: not installed (run: j1-mesh install $p)"
+    fi
+  done
+}
+
+cmd_down() {
+  local providers p
+  providers=$(resolve_providers "$@")
+  load_env
+  for p in $providers; do
+    if "${p}_installed"; then
+      log "Disconnecting: $p"
+      "${p}_down" || warn "$p: could not disconnect cleanly"
+    fi
+  done
+}
+
+cmd_status() {
+  local p state dash="n/a"
+  printf '%-12s %s\n' PROVIDER STATE
+  for p in $ALL_PROVIDERS; do
+    state=$("${p}_state")
+    printf '%-12s %s\n' "$p" "$state"
+  done
+  if command -v systemctl >/dev/null 2>&1; then
+    dash=$(systemctl is-active j1-mesh-dashboard.service 2>/dev/null || true)
+  fi
+  printf '%-12s %s\n' dashboard "${dash:-unknown}"
+}
+
+cmd_doctor() {
+  local fail=0 p state hit=0 dash_port="${J1_MESH_PORT:-8787}"
+  if [ -r "$JMS_ETC/dashboard.env" ]; then
+    dash_port=$(sed -n 's/^J1_MESH_PORT=\([0-9]*\).*/\1/p' "$JMS_ETC/dashboard.env" | tail -n1)
+    dash_port="${dash_port:-8787}"
+  fi
+
+  log "Provider health"
+  for p in $ALL_PROVIDERS; do
+    state=$("${p}_state")
+    case "$state" in
+      connected) ok "$p: connected" ;;
+      missing)   printf '  %s: not installed (skipped)\n' "$p" ;;
+      *)         warn "$p: $state"; fail=1 ;;
+    esac
+  done
+
+  log "Firewall audit (this tool never creates firewall rules or port-forwards)"
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qE '(41641|9993|51820)'; then
+    warn "UFW has allow rules for mesh ports. They are not needed; consider removing them."
+    hit=1
+  fi
+  if command -v nft >/dev/null 2>&1 && nft list ruleset 2>/dev/null | grep -qE 'dport (41641|9993|51820)'; then
+    warn "nftables has rules matching mesh ports. They are not needed; consider removing them."
+    hit=1
+  fi
+  if [ "$hit" = 0 ]; then
+    ok "No firewall rules opening mesh ports"
+  fi
+
+  log "Listening sockets owned by the stack"
+  local proto _s _r _q laddr _p proc name port
+  while read -r proto _s _r _q laddr _p proc; do
+    name=$(sed -n 's/.*users:(("\([^"]*\)".*/\1/p' <<<"${proc:-}")
+    port="${laddr##*:}"
+    case "$name" in
+      tailscaled|netbird|zerotier-one|warp-svc)
+        printf '  %-4s %-26s %-13s local socket; NAT traversal is outbound-initiated, no inbound rule required\n' \
+          "$proto" "$laddr" "$name"
+        ;;
+    esac
+    if [ "$proto" = tcp ] && [ "$port" = "$dash_port" ]; then
+      case "$laddr" in
+        127.0.0.1:*|"[::1]:"*|100.*) ok "dashboard bound to $laddr (not reachable from the LAN/Internet)" ;;
+        *) warn "dashboard listening on $laddr - expected loopback or a mesh address"; fail=1 ;;
+      esac
+    fi
+  done < <(ss -H -lntup 2>/dev/null || true)
+
+  log "Address-range overlap check"
+  local n=0 i
+  for i in tailscale0 wt0 CloudflareWARP; do
+    if ip -4 -o addr show dev "$i" 2>/dev/null | grep -q 'inet 100\.'; then
+      n=$((n + 1))
+    fi
+  done
+  if [ "$n" -gt 1 ]; then
+    warn "More than one mesh interface uses 100.x CGNAT addresses. Verify the ranges do not overlap (see README: Known interactions)."
+  else
+    ok "No CGNAT range overlap detected"
+  fi
+
+  [ "$fail" = 0 ] || exit 1
+}
+
+cmd_uninstall() {
+  local purge=0 args=() providers p
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --purge) purge=1 ;;
+      -*) die "Unknown option: $1" ;;
+      *) args+=("$1") ;;
+    esac
+    shift
+  done
+  providers=$(resolve_providers "${args[@]+"${args[@]}"}")
+  for p in $providers; do
+    log "Removing: $p"
+    "${p}_uninstall"
+  done
+  if [ "${#args[@]}" -eq 0 ]; then
+    dashboard_uninstall
+  fi
+  if [ "$purge" = 1 ]; then
+    rm -rf "$JMS_ETC" "$JMS_STATE"
+    ok "Purged $JMS_ETC and $JMS_STATE"
+  fi
+}
+
+cmd_dashboard() {
+  local f="$JMS_ETC/dashboard.env"
+  if [ -r "$f" ]; then
+    set -a
+    # shellcheck source=/dev/null
+    . "$f"
+    set +a
+  fi
+  exec python3 "$JMS_ROOT/dashboard/server.py"
+}
+
+main() {
+  local cmd="${1:-help}"
+  [ $# -gt 0 ] && shift
+  case "$cmd" in
+    help|-h|--help) usage ;;
+    version|-V|--version) echo "j1-mesh $JMS_VERSION" ;;
+    dashboard) cmd_dashboard ;;
+    install|up|down|status|doctor|uninstall)
+      require_root "$cmd" "$@"
+      "cmd_$cmd" "$@"
+      ;;
+    *) usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

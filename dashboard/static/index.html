@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>J1 Mesh</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo">J1</span><span class="word">MESH</span>
+      <span class="sub" id="sub">latency race</span>
+    </div>
+    <div class="live" id="live" aria-live="polite">
+      <span class="pulse" aria-hidden="true"></span><span id="live-text">connecting…</span>
+    </div>
+  </header>
+
+  <main>
+    <section aria-labelledby="race-h">
+      <h2 id="race-h">Latency race <small>longer bar = faster · median RTT across peers</small></h2>
+      <div id="race" class="race"></div>
+    </section>
+
+    <section aria-labelledby="cards-h">
+      <h2 id="cards-h">Meshes</h2>
+      <div id="cards" class="cards"></div>
+    </section>
+
+    <section aria-labelledby="peers-h">
+      <h2 id="peers-h">Peers <small>fastest first</small></h2>
+      <div id="chips" class="chips" role="group" aria-label="Filter by mesh"></div>
+      <div class="table-wrap">
+        <table id="peers">
+          <thead><tr><th>Mesh</th><th>Peer</th><th>Address</th><th class="num">RTT</th><th>Path</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span id="foot">j1-mesh-stack</span>
+    <span>no inbound ports · outbound probes only</span>
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>
