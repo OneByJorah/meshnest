@@ -12,6 +12,6 @@ Please report vulnerabilities privately through GitHub's "Report a vulnerability
 
 ## Things to know
 
-- `/etc/j1-mesh/mesh.env` holds enrollment keys and is created with mode `0600`. Use one-off or short-lived keys: vendor CLIs take them as command-line arguments, which other local users can briefly see in the process list.
+- `/etc/meshnest/mesh.env` holds enrollment keys and is created with mode `0600`. Use one-off or short-lived keys: vendor CLIs take them as command-line arguments, which other local users can briefly see in the process list.
 - The dashboard service runs as root so `zerotier-cli` can read its token and `ping` can open raw sockets; the unit is sandboxed (`ProtectSystem=strict`, `NoNewPrivileges`, restricted address families).
-- `curl | sudo bash` trusts GitHub and this repo. Pin a tag with `JMS_REF=vX.Y.Z` and optionally a checksum with `JMS_SHA256`, or install the release `.deb`.
+- `curl | sudo bash` trusts GitHub and this repo. Pin a tag with `MN_REF=vX.Y.Z` and optionally a checksum with `MN_SHA256`, or install the release `.deb`.

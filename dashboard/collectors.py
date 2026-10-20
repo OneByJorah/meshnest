@@ -1,4 +1,4 @@
-"""Mesh collectors for j1-mesh-stack. Standard library only.
+"""Mesh collectors for meshnest. Standard library only.
 
 Every collector returns one *sample*:
 
@@ -359,7 +359,7 @@ def collect_baseline(target="1.1.1.1"):
     s = new_sample("baseline", "Direct internet", None)
     if not safe_host(target):
         s["state"] = "error"
-        s["error"] = "invalid J1_MESH_BASELINE"
+        s["error"] = "invalid MN_BASELINE"
         return s
     ms = icmp_ping(target)
     s["state"] = "connected" if ms is not None else "disconnected"

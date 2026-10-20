@@ -1,14 +1,14 @@
 [Unit]
-Description=J1 Mesh Stack - mesh latency dashboard
-Documentation=https://github.com/OneByJorah/j1-mesh-stack
+Description=MN Mesh Stack - mesh latency dashboard
+Documentation=https://github.com/OneByJorah/meshnest
 After=network-online.target tailscaled.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=-/etc/j1-mesh/dashboard.env
-WorkingDirectory=/var/lib/j1-mesh
-ExecStart=/usr/bin/python3 @JMS_ROOT@/dashboard/server.py
+EnvironmentFile=-/etc/meshnest/dashboard.env
+WorkingDirectory=/var/lib/meshnest
+ExecStart=/usr/bin/python3 @MN_ROOT@/dashboard/server.py
 Restart=on-failure
 RestartSec=5
 
@@ -18,7 +18,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/j1-mesh
+ReadWritePaths=/var/lib/meshnest
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

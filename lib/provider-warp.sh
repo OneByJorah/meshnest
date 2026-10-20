@@ -38,7 +38,7 @@ warp_install() {
 warp_up() {
   systemctl enable --now warp-svc >/dev/null 2>&1 || true
   if [ -z "${WARP_CONNECTOR_TOKEN:-}" ]; then
-    warn "warp: WARP_CONNECTOR_TOKEN not set in $JMS_ETC/mesh.env - installed but not enrolled"
+    warn "warp: WARP_CONNECTOR_TOKEN not set in $MN_ETC/mesh.env - installed but not enrolled"
     return 0
   fi
   wait_for 15 warp-cli --accept-tos status || true

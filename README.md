@@ -1,21 +1,21 @@
-# j1-mesh-stack
+# meshnest
 
 A mesh VPN stack you can deploy **without opening a single inbound port**, with a live dashboard that shows which mesh is responding fastest.
 
 One command installs Cloudflare WARP (connector mode), Tailscale, NetBird and ZeroTier from their signed apt repositories, enrolls the node, and starts a latency dashboard that races them against each other.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OneByJorah/j1-mesh-stack/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/OneByJorah/meshnest/main/install.sh | sudo bash
 ```
 
 Pick providers, or pin a release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OneByJorah/j1-mesh-stack/main/install.sh | sudo bash -s -- tailscale netbird
-curl -fsSL https://raw.githubusercontent.com/OneByJorah/j1-mesh-stack/main/install.sh | sudo JMS_REF=v0.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/OneByJorah/meshnest/main/install.sh | sudo bash -s -- tailscale netbird
+curl -fsSL https://raw.githubusercontent.com/OneByJorah/meshnest/main/install.sh | sudo MN_REF=v0.1.0 bash
 ```
 
-Or install the `.deb` from the [Releases](https://github.com/OneByJorah/j1-mesh-stack/releases) page, then `sudo j1-mesh install`.
+Or install the `.deb` from the [Releases](https://github.com/OneByJorah/meshnest/releases) page, then `sudo meshnest install`.
 
 Debian / Ubuntu family (apt) only for now. WireGuard-by-hand is intentionally not included.
 
@@ -26,9 +26,9 @@ Debian / Ubuntu family (apt) only for now. WireGuard-by-hand is intentionally no
 | Enrollment | Outbound HTTPS to each vendor's control plane. |
 | Peer traffic | NAT traversal initiated from your side (hole punching), with vendor relays as fallback (Tailscale DERP, NetBird relay, ZeroTier roots, Cloudflare edge). |
 | Firewall / router | **This project never creates a firewall rule, UPnP mapping or port-forward.** |
-| Dashboard | Binds to `127.0.0.1` by default. `J1_MESH_BIND=tailscale` binds to your Tailscale IP only. Wildcard binds are refused. |
+| Dashboard | Binds to `127.0.0.1` by default. `MN_BIND=tailscale` binds to your Tailscale IP only. Wildcard binds are refused. |
 
-Honest detail: the mesh daemons do bind local UDP sockets (for example `tailscaled` on 41641, `zerotier-one` on 9993). That is how they send and receive hole-punched traffic. No inbound allow rule is needed for them; if hole punching fails between two peers, traffic falls back to a relay and still works, just with higher latency. `sudo j1-mesh doctor` lists those sockets and flags any firewall rule that opens them.
+Honest detail: the mesh daemons do bind local UDP sockets (for example `tailscaled` on 41641, `zerotier-one` on 9993). That is how they send and receive hole-punched traffic. No inbound allow rule is needed for them; if hole punching fails between two peers, traffic falls back to a relay and still works, just with higher latency. `sudo meshnest doctor` lists those sockets and flags any firewall rule that opens them.
 
 ## Providers
 
@@ -44,10 +44,10 @@ Each vendor has its own free plan and limits; check their current terms for what
 ## Quick start
 
 ```bash
-sudo j1-mesh install                 # installs everything, creates /etc/j1-mesh/*.env
-sudoedit /etc/j1-mesh/mesh.env       # add your enrollment keys
-sudo j1-mesh up                      # connect every installed provider
-sudo j1-mesh doctor                  # health + inbound-exposure audit
+sudo meshnest install                 # installs everything, creates /etc/meshnest/*.env
+sudoedit /etc/meshnest/mesh.env       # add your enrollment keys
+sudo meshnest up                      # connect every installed provider
+sudo meshnest doctor                  # health + inbound-exposure audit
 ```
 
 Open the dashboard at `http://127.0.0.1:8787`. From another device on your tailnet:
@@ -77,50 +77,50 @@ How latency is measured (best available RTT per peer):
 
 Methods differ per mesh, so treat small gaps (a few ms) as noise and large gaps as real. Meshes with no online peers have nothing to rank.
 
-### Dashboard settings (`/etc/j1-mesh/dashboard.env`)
+### Dashboard settings (`/etc/meshnest/dashboard.env`)
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `J1_MESH_BIND` | `127.0.0.1` | `127.0.0.1`, `tailscale`, or a CGNAT/ULA mesh address |
-| `J1_MESH_PORT` | `8787` | |
-| `J1_MESH_INTERVAL` | `5` | Seconds between probe rounds |
-| `J1_MESH_PROVIDERS` | all four | Comma-separated subset |
-| `J1_MESH_BASELINE` | `1.1.1.1` | Empty disables the reference row |
-| `J1_MESH_MAX_PEERS` | `24` | Per mesh per round |
-| `J1_MESH_ALLOWED_HOSTS` | empty | Extra accepted `Host` headers; your MagicDNS name is added automatically |
-| `J1_MESH_HOSTNAME` | system hostname | Name shown in the dashboard header (handy for containers) |
+| `MN_BIND` | `127.0.0.1` | `127.0.0.1`, `tailscale`, or a CGNAT/ULA mesh address |
+| `MN_PORT` | `8787` | |
+| `MN_INTERVAL` | `5` | Seconds between probe rounds |
+| `MN_PROVIDERS` | all four | Comma-separated subset |
+| `MN_BASELINE` | `1.1.1.1` | Empty disables the reference row |
+| `MN_MAX_PEERS` | `24` | Per mesh per round |
+| `MN_ALLOWED_HOSTS` | empty | Extra accepted `Host` headers; your MagicDNS name is added automatically |
+| `MN_HOSTNAME` | system hostname | Name shown in the dashboard header (handy for containers) |
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ## CLI
 
 ```
-j1-mesh install [--no-dashboard] [--no-up] [provider...]
-j1-mesh up|down [provider...]
-j1-mesh status
-j1-mesh doctor
-j1-mesh dashboard            # foreground, for development
-j1-mesh uninstall [--purge] [provider...]
+meshnest install [--no-dashboard] [--no-up] [provider...]
+meshnest up|down [provider...]
+meshnest status
+meshnest doctor
+meshnest dashboard            # foreground, for development
+meshnest uninstall [--purge] [provider...]
 ```
 
 ## Known interactions
 
-- **CGNAT overlap.** Tailscale and NetBird both allocate from `100.64.0.0/10` by default, and WARP's virtual addresses also sit in `100.x` space. Running several can cause routing conflicts. `j1-mesh doctor` warns when more than one mesh interface holds a `100.x` address; if it does, give NetBird a different network range or exclude the other ranges in WARP's split-tunnel settings.
+- **CGNAT overlap.** Tailscale and NetBird both allocate from `100.64.0.0/10` by default, and WARP's virtual addresses also sit in `100.x` space. Running several can cause routing conflicts. `meshnest doctor` warns when more than one mesh interface holds a `100.x` address; if it does, give NetBird a different network range or exclude the other ranges in WARP's split-tunnel settings.
 - **IP forwarding.** WARP connector mode needs forwarding on. That turns the host into a router for whatever your firewall's FORWARD policy allows, so review it.
-- **ZeroTier addresses** are usually private (`10.x`, `192.168.x`). Binding the dashboard there needs `J1_MESH_ALLOW_ANY_BIND=1`.
+- **ZeroTier addresses** are usually private (`10.x`, `192.168.x`). Binding the dashboard there needs `MN_ALLOW_ANY_BIND=1`.
 
 ## Uninstall
 
 ```bash
-sudo j1-mesh uninstall            # all providers + dashboard
-sudo j1-mesh uninstall --purge    # also deletes /etc/j1-mesh and /var/lib/j1-mesh
+sudo meshnest uninstall            # all providers + dashboard
+sudo meshnest uninstall --purge    # also deletes /etc/meshnest and /var/lib/meshnest
 ```
 
 ## Repository layout
 
 ```
 install.sh            bootstrap (curl | sudo bash)
-bin/j1-mesh           CLI
+bin/meshnest           CLI
 lib/                  common helpers + one script per provider
 dashboard/            stdlib-only Python collectors, server and static UI
 config/               example env files

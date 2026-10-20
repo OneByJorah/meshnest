@@ -1,5 +1,5 @@
 'use strict';
-/* J1 Mesh dashboard. Every dynamic value is inserted with textContent / createTextNode:
+/* MN Mesh dashboard. Every dynamic value is inserted with textContent / createTextNode:
    peer hostnames come from other devices on your meshes and must never be treated as HTML. */
 
 const $ = (sel) => document.querySelector(sel);
@@ -97,7 +97,7 @@ function renderRace(s) {
     kids[kids.length - 1].querySelector('.bar > i').style.width = '100%';
   }
 
-  if (!kids.length) kids.push(h('div', { class: 'empty' }, 'No providers enabled. Check J1_MESH_PROVIDERS.'));
+  if (!kids.length) kids.push(h('div', { class: 'empty' }, 'No providers enabled. Check MN_PROVIDERS.'));
   root.replaceChildren(...kids);
 }
 
@@ -126,7 +126,7 @@ function renderCards(s) {
       );
       body.push(sparkline((s.series && s.series[p.id]) || []));
     } else if (p.state === 'missing') {
-      body.push(h('div', { class: 'err' }, 'Not installed. Run: sudo j1-mesh install ' + p.id));
+      body.push(h('div', { class: 'err' }, 'Not installed. Run: sudo meshnest install ' + p.id));
     }
     if (p.error && p.state !== 'connected') body.push(h('div', { class: 'err' }, p.error));
     return h('article', { class: 'card' + (best ? ' best' : '') }, ...body);
@@ -171,8 +171,8 @@ function renderHeader(s) {
   const fastest = s.providers.find((p) => p.id === s.fastest);
   $('#sub').textContent =
     `${s.host} · ${up}/${s.providers.length} meshes up` + (fastest ? ` · fastest: ${fastest.name}` : '');
-  $('#foot').textContent = `j1-mesh-stack v${s.version} · refresh ${s.interval}s`;
-  document.title = fastest ? `J1 Mesh · ${fastest.name} ${fmt(fastest.stats.median)}ms` : 'J1 Mesh';
+  $('#foot').textContent = `meshnest v${s.version} · refresh ${s.interval}s`;
+  document.title = fastest ? `MN Mesh · ${fastest.name} ${fmt(fastest.stats.median)}ms` : 'MN Mesh';
 }
 
 function setLive(cls, text) {

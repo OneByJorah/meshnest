@@ -109,7 +109,7 @@ class StatsTests(unittest.TestCase):
 
 class ServerTests(unittest.TestCase):
     def setUp(self):
-        os.environ.pop("J1_MESH_ALLOW_ANY_BIND", None)
+        os.environ.pop("MN_ALLOW_ANY_BIND", None)
 
     def test_bind_policy(self):
         for ok in ("127.0.0.1", "::1", "100.101.102.103", "fd7a:115c:a1e0::1"):
@@ -118,13 +118,13 @@ class ServerTests(unittest.TestCase):
             self.assertFalse(srv.bind_allowed(bad), bad)
 
     def test_bind_override_never_allows_wildcard(self):
-        os.environ["J1_MESH_ALLOW_ANY_BIND"] = "1"
+        os.environ["MN_ALLOW_ANY_BIND"] = "1"
         try:
             self.assertTrue(srv.bind_allowed("192.168.1.5"))
             self.assertFalse(srv.bind_allowed("0.0.0.0"))
             self.assertFalse(srv.bind_allowed("::"))
         finally:
-            os.environ.pop("J1_MESH_ALLOW_ANY_BIND", None)
+            os.environ.pop("MN_ALLOW_ANY_BIND", None)
 
     def test_hostname_parse(self):
         self.assertEqual(srv.hostname_from_header("Localhost:8787"), "localhost")
@@ -141,7 +141,7 @@ class ServerTests(unittest.TestCase):
             "baseline": None,
         }
         text = srv.render_metrics(state)
-        self.assertIn('j1_mesh_up{provider="tailscale"} 1', text)
+        self.assertIn('mn_mesh_up{provider="tailscale"} 1', text)
         self.assertIn('peer="ev\\"il\\nname"', text)
         self.assertNotIn('ev"il', text)
 

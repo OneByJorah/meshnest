@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# j1-mesh-stack shared helpers. Sourced by bin/j1-mesh; never executed directly.
+# meshnest shared helpers. Sourced by bin/meshnest; never executed directly.
 
-: "${JMS_ROOT:?JMS_ROOT must be set by the caller}"
+: "${MN_ROOT:?MN_ROOT must be set by the caller}"
 
-JMS_VERSION="$(tr -d '[:space:]' < "$JMS_ROOT/VERSION" 2>/dev/null || echo dev)"
-JMS_ETC="${JMS_ETC:-/etc/j1-mesh}"
-JMS_STATE="${JMS_STATE:-/var/lib/j1-mesh}"
+MN_VERSION="$(tr -d '[:space:]' < "$MN_ROOT/VERSION" 2>/dev/null || echo dev)"
+MN_ETC="${MN_ETC:-/etc/meshnest}"
+MN_STATE="${MN_STATE:-/var/lib/meshnest}"
 ALL_PROVIDERS="warp tailscale netbird zerotier"
 # shellcheck disable=SC2034
-export JMS_VERSION JMS_ETC JMS_STATE ALL_PROVIDERS
+export MN_VERSION MN_ETC MN_STATE ALL_PROVIDERS
 
 if [ -t 1 ]; then
   C_AMB=$'\033[38;5;214m'; C_GRN=$'\033[32m'; C_YEL=$'\033[33m'; C_RED=$'\033[31m'; C_OFF=$'\033[0m'
@@ -71,7 +71,7 @@ add_apt_repo() {
 }
 
 load_env() {
-  local f="$JMS_ETC/mesh.env"
+  local f="$MN_ETC/mesh.env"
   if [ -r "$f" ]; then
     set -a
     # shellcheck source=/dev/null

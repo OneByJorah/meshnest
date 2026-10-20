@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""J1 Mesh dashboard server. Standard library only.
+"""MN Mesh dashboard server. Standard library only.
 
 Serves a live latency comparison of every mesh VPN on this host.
 
-Exposure model: loopback by default. `J1_MESH_BIND=tailscale` binds to the node's
+Exposure model: loopback by default. `MN_BIND=tailscale` binds to the node's
 Tailscale IPv4 so only your tailnet can reach it. Wildcard binds are refused.
 Routes (all GET, read-only):  /  /api/state  /metrics  /healthz  + static assets.
 """
@@ -56,13 +56,13 @@ def env_int(name, default, lo, hi):
     return max(lo, min(hi, v))
 
 
-BIND = (os.environ.get("J1_MESH_BIND") or "127.0.0.1").strip()
-PORT = env_int("J1_MESH_PORT", 8787, 1, 65535)
-INTERVAL = env_int("J1_MESH_INTERVAL", 5, 2, 300)
-MAX_PEERS = env_int("J1_MESH_MAX_PEERS", 24, 1, 200)
-PROVIDERS = [p.strip() for p in os.environ.get("J1_MESH_PROVIDERS", "tailscale,netbird,zerotier,warp").split(",") if p.strip()]
-BASELINE = os.environ.get("J1_MESH_BASELINE", "1.1.1.1").strip()
-STATE_DIR = Path(os.environ.get("J1_MESH_STATE", "/var/lib/j1-mesh"))
+BIND = (os.environ.get("MN_BIND") or "127.0.0.1").strip()
+PORT = env_int("MN_PORT", 8787, 1, 65535)
+INTERVAL = env_int("MN_INTERVAL", 5, 2, 300)
+MAX_PEERS = env_int("MN_MAX_PEERS", 24, 1, 200)
+PROVIDERS = [p.strip() for p in os.environ.get("MN_PROVIDERS", "tailscale,netbird,zerotier,warp").split(",") if p.strip()]
+BASELINE = os.environ.get("MN_BASELINE", "1.1.1.1").strip()
+STATE_DIR = Path(os.environ.get("MN_STATE", "/var/lib/meshnest"))
 
 LOCK = threading.Lock()
 STATE: dict = {"ready": False}
@@ -73,7 +73,7 @@ HISTORY: dict[str, deque] = {}
 
 def bind_allowed(bind: str) -> bool:
     """Loopback, Tailscale/NetBird CGNAT and ULA addresses are fine; everything else needs an override."""
-    if os.environ.get("J1_MESH_ALLOW_ANY_BIND") == "1":
+    if os.environ.get("MN_ALLOW_ANY_BIND") == "1":
         return bind not in ("0.0.0.0", "::", "")
     try:
         ip = ipaddress.ip_address(bind)
@@ -92,7 +92,7 @@ def resolve_bind(spec: str) -> str:
         if ip:
             return ip
         time.sleep(3)
-    sys.exit("J1_MESH_BIND=tailscale but no Tailscale IPv4 appeared within 120s")
+    sys.exit("MN_BIND=tailscale but no Tailscale IPv4 appeared within 120s")
 
 
 # --------------------------------------------------------------------------- host header guard
@@ -111,7 +111,7 @@ def allowed_hosts(bind: str) -> set:
     now = time.time()
     if now - _host_cache["ts"] > 60:
         names = {"localhost", "127.0.0.1", "::1", bind.lower()}
-        names.update(h.strip().lower() for h in os.environ.get("J1_MESH_ALLOWED_HOSTS", "").split(",") if h.strip())
+        names.update(h.strip().lower() for h in os.environ.get("MN_ALLOWED_HOSTS", "").split(",") if h.strip())
         rc, out, _ = collectors.run(["tailscale", "status", "--json"], 4)
         if rc == 0 and out.strip():
             try:
@@ -168,7 +168,7 @@ def update_state(snap: dict):
         STATE.update(
             ready=True,
             version=VERSION,
-            host=os.environ.get("J1_MESH_HOSTNAME") or socket.gethostname(),
+            host=os.environ.get("MN_HOSTNAME") or socket.gethostname(),
             interval=INTERVAL,
             series=series,
             **snap,
@@ -182,7 +182,7 @@ def poller():
         try:
             update_state(collectors.collect_all(PROVIDERS, BASELINE, MAX_PEERS))
         except Exception as exc:  # keep the loop alive no matter what
-            print(f"[j1-mesh] collect error: {exc}", file=sys.stderr, flush=True)
+            print(f"[meshnest] collect error: {exc}", file=sys.stderr, flush=True)
         if time.time() - last_save > 60:
             save_history()
             last_save = time.time()
@@ -197,32 +197,32 @@ def prom_escape(value) -> str:
 
 def render_metrics(state: dict) -> str:
     out = [
-        "# HELP j1_mesh_up 1 when the mesh is connected.",
-        "# TYPE j1_mesh_up gauge",
+        "# HELP mn_mesh_up 1 when the mesh is connected.",
+        "# TYPE mn_mesh_up gauge",
     ]
     provs = state.get("providers", [])
     for s in provs:
-        out.append(f'j1_mesh_up{{provider="{prom_escape(s["id"])}"}} {1 if s["state"] == "connected" else 0}')
-    out += ["# HELP j1_mesh_latency_ms Latency summary across peers, milliseconds.", "# TYPE j1_mesh_latency_ms gauge"]
+        out.append(f'mn_mesh_up{{provider="{prom_escape(s["id"])}"}} {1 if s["state"] == "connected" else 0}')
+    out += ["# HELP mn_mesh_latency_ms Latency summary across peers, milliseconds.", "# TYPE mn_mesh_latency_ms gauge"]
     for s in provs + ([state["baseline"]] if state.get("baseline") else []):
         for stat in ("min", "avg", "median", "p95"):
             v = s["stats"].get(stat)
             if v is not None:
-                out.append(f'j1_mesh_latency_ms{{provider="{prom_escape(s["id"])}",stat="{stat}"}} {v}')
-    out += ["# HELP j1_mesh_loss_percent Probe loss across peers.", "# TYPE j1_mesh_loss_percent gauge"]
+                out.append(f'mn_mesh_latency_ms{{provider="{prom_escape(s["id"])}",stat="{stat}"}} {v}')
+    out += ["# HELP mn_mesh_loss_percent Probe loss across peers.", "# TYPE mn_mesh_loss_percent gauge"]
     for s in provs:
         v = s["stats"].get("loss")
         if v is not None:
-            out.append(f'j1_mesh_loss_percent{{provider="{prom_escape(s["id"])}"}} {v}')
-    out += ["# HELP j1_mesh_peers Peers seen online.", "# TYPE j1_mesh_peers gauge"]
+            out.append(f'mn_mesh_loss_percent{{provider="{prom_escape(s["id"])}"}} {v}')
+    out += ["# HELP mn_mesh_peers Peers seen online.", "# TYPE mn_mesh_peers gauge"]
     for s in provs:
-        out.append(f'j1_mesh_peers{{provider="{prom_escape(s["id"])}"}} {s["stats"]["n"]}')
-    out += ["# HELP j1_mesh_peer_latency_ms Per-peer latency, milliseconds.", "# TYPE j1_mesh_peer_latency_ms gauge"]
+        out.append(f'mn_mesh_peers{{provider="{prom_escape(s["id"])}"}} {s["stats"]["n"]}')
+    out += ["# HELP mn_mesh_peer_latency_ms Per-peer latency, milliseconds.", "# TYPE mn_mesh_peer_latency_ms gauge"]
     for s in provs:
         for p in s["peers"]:
             if p.get("latency_ms") is not None:
                 out.append(
-                    f'j1_mesh_peer_latency_ms{{provider="{prom_escape(s["id"])}",peer="{prom_escape(p["name"])}",'
+                    f'mn_mesh_peer_latency_ms{{provider="{prom_escape(s["id"])}",peer="{prom_escape(p["name"])}",'
                     f'path="{prom_escape(p.get("path") or "unknown")}"}} {p["latency_ms"]}'
                 )
     return "\n".join(out) + "\n"
@@ -231,12 +231,12 @@ def render_metrics(state: dict) -> str:
 # --------------------------------------------------------------------------- http
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "j1-mesh"
+    server_version = "meshnest"
     sys_version = ""
     bind_addr = "127.0.0.1"
 
     def log_message(self, fmt, *args):
-        if os.environ.get("J1_MESH_ACCESS_LOG") == "1":
+        if os.environ.get("MN_ACCESS_LOG") == "1":
             super().log_message(fmt, *args)
 
     def _send(self, code, body: bytes, ctype="text/plain; charset=utf-8"):
@@ -282,7 +282,7 @@ def main():
     if not bind_allowed(bind):
         sys.exit(
             f"refusing to bind to {bind!r}: only loopback, 'tailscale', or CGNAT/ULA mesh addresses are allowed.\n"
-            "Set J1_MESH_ALLOW_ANY_BIND=1 to bind another specific address (wildcards are never allowed)."
+            "Set MN_ALLOW_ANY_BIND=1 to bind another specific address (wildcards are never allowed)."
         )
     load_history()
     Handler.bind_addr = bind
@@ -300,7 +300,7 @@ def main():
     signal.signal(signal.SIGTERM, _stop)
     threading.Thread(target=poller, daemon=True).start()
     host = f"[{bind}]" if ":" in bind else bind
-    print(f"[j1-mesh] dashboard v{VERSION} on http://{host}:{PORT} (providers: {','.join(PROVIDERS)})", flush=True)
+    print(f"[meshnest] dashboard v{VERSION} on http://{host}:{PORT} (providers: {','.join(PROVIDERS)})", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

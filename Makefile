@@ -4,7 +4,7 @@ test:
 	python3 -m unittest discover -s tests -v
 
 lint:
-	shellcheck -x install.sh bin/j1-mesh lib/*.sh packaging/*.sh
+	shellcheck -x install.sh bin/meshnest lib/*.sh packaging/*.sh
 
 deb:
 	./packaging/build-deb.sh

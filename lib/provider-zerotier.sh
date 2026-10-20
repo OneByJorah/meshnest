@@ -31,7 +31,7 @@ zerotier_up() {
   systemctl enable --now zerotier-one >/dev/null 2>&1 || true
   wait_for 20 zerotier-cli info || { warn "zerotier: daemon not answering yet"; return 0; }
   if [ -z "${ZT_NETWORK_ID:-}" ]; then
-    warn "zerotier: ZT_NETWORK_ID not set in $JMS_ETC/mesh.env - installed but no network joined"
+    warn "zerotier: ZT_NETWORK_ID not set in $MN_ETC/mesh.env - installed but no network joined"
     return 0
   fi
   local id

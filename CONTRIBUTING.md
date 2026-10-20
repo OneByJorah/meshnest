@@ -1,4 +1,4 @@
-# Contributing to j1-mesh-stack
+# Contributing to meshnest
 
 Thanks for helping. A few rules keep this project honest.
 
@@ -13,7 +13,7 @@ The dashboard must also stay stdlib-only Python — no runtime dependencies.
 ## Getting started
 
 ```bash
-git clone https://github.com/OneByJorah/j1-mesh-stack && cd j1-mesh-stack
+git clone https://github.com/OneByJorah/meshnest && cd meshnest
 make test   # unit tests (no network, no root)
 make lint   # shellcheck (install.sh, bin/, lib/, packaging/)
 make deb    # build the .deb
